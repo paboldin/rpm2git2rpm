@@ -97,13 +97,12 @@ import_patches_from_spec() {
 
 		filename = $NF;
 		patches[num, "filename"] = filename;
-		patches[num, "comment"] = comment;
-		patches[num, "command"] = $0;
+		patches[num, "command"] = comment $0;
 	}
 	$0 ~ PATCH_CMD_RE {
 		match($1, PATCH_CMD_RE, a);
 		num = a[1];
-		patchnums[num] = $0;
+		patchnums[num] = comment $0;
 	}
 	!/^#/ {
 		comment = "";
@@ -157,11 +156,10 @@ import_patches_from_spec() {
 
 			diff = content;
 			patch_info = ("\n"\
+				"---===---\n"\
+				patches[num, "command"] "\n" \
 				"===\n"\
-				patches[num, "comment"] \
-				patches[num, "command"] "\n"\
-				"===\n"\
-				patchnums[num] "\n"\
+				patchnums[num] "\n" \
 				"===\n"\
 				);
 
@@ -217,8 +215,7 @@ main() {
 		fi
 	fi
 
-	#import_source_from_spec $specfile $sourcedir
-	#return
+	import_source_from_spec $specfile $sourcedir
 	import_patches_from_spec $specfile $sourcedir
 }
 
