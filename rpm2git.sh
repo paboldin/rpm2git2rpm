@@ -74,6 +74,8 @@ import_source_from_spec() {
 			git add dist/$filename
 		fi
 	done < ${tmpfile}.list
+
+	git commit -m "import sources from $(basename $specfile)"
 }
 
 import_patches_from_spec() {
