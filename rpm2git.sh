@@ -171,7 +171,7 @@ check_repo() {
 		cat <<EOF
 Previously imported RPM found. To update use a temporary branch and then
 merge with it:
-	git checkout -b tmp
+	git checkout -b tmp origbranch
 	$0 $@
 	git checkout oldbranch
 	git merge tmp --ff-only
