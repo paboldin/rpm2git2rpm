@@ -35,47 +35,28 @@ import_source_from_spec() {
 
 	echo "${green}extracting source code for $specfile${white}"
 
-	rpmspec -P $specfile > $tmpfile
-	awk '
-	BEGIN {
-		SOURCE_RE = "^Source([[:digit:]]+)";
-	}
-	$0 ~ SOURCE_RE {
-		match($1, SOURCE_RE, a);
-		num = a[1];
-		filename = $NF;
-		sources[num] = filename;
-	}
-
-	END {
-		url = -1;
-		for (num in sources) {
-			filename = sources[num];
-			if (index(filename, "/") != 0) {
-				split(filename, a, "/");
-				filename = a[length(a)];
-				url = num;
-			}
-			print num, filename, url == num ? "BASE" : "";
-		}
-	}
-	' $tmpfile > ${tmpfile}.list
+	list_source_code_files $specfile > $tmpfile
 
 	mkdir -p dist || :
 	while read num filename is_base; do
 		if test -n "$is_base"; then
 			compare_base_source $sourcedir $filename
 		fi
-	done < ${tmpfile}.list
+	done < $tmpfile
 
 	while read num filename is_base; do
 		if test -z "$is_base"; then
 			cp $sourcedir/$filename dist/
 			git add dist/$filename
 		fi
-	done < ${tmpfile}.list
+	done < $tmpfile
 
-	git commit -m "import sources from $(basename $specfile)"
+
+	git commit -F - <<EOF
+import sources from $(basename $specfile)
+
+===RPMSKIP===
+EOF
 }
 
 import_patches_from_spec() {
@@ -99,7 +80,7 @@ import_patches_from_spec() {
 
 		filename = $NF;
 		patches[num, "filename"] = filename;
-		patches[num, "command"] = comment $0;
+		patches[num, "desc"] = comment $0;
 	}
 	$0 ~ PATCH_CMD_RE {
 		match($1, PATCH_CMD_RE, a);
@@ -119,6 +100,7 @@ import_patches_from_spec() {
 
 			mail_header = mail_header_tmp = "";
 			message = content = "";
+
 			while ((getline tmp < file) > 0) {
 				if (mail_header_tmp == "" && mail_header == "") {
 					if (index(tmp, "From ") == 1) {
@@ -158,18 +140,15 @@ import_patches_from_spec() {
 
 			diff = content;
 			patch_info = ("\n"\
-				"---===---\n"\
-				patches[num, "command"] "\n" \
-				"===\n"\
+				"===RPMDESC===\n"\
+				patches[num, "desc"] "\n" \
+				"===RPMCMD===\n"\
 				patchnums[num] "\n" \
-				"===\n"\
+				"===RPMEND===\n"\
 				);
 
 			content = mail_header message patch_info "\n\n---" diff;
 		        content = content message;
-
-			print "testfile" num;
-			print content > "testfile" num;
 
 			print content > tmpfile;
 			close(tmpfile);
@@ -187,27 +166,31 @@ import_patches_from_spec() {
 	fi
 }
 
-init() {
-	red="$(tput setaf 1 || :)"
-	green="$(tput setaf 2 || :)"
-	white="$(tput setaf 7 || :)"
-
-	set +e
-	git archive-all >/dev/null 2>&1
-	rv=$?
-	if test $rv -ne 2; then
-		echo "git archive-all required, install it with:"
-		echo "pip install archive-all"
+check_repo() {
+	if test -n "$(git show -s | grep '==RPMEND==')"; then
+		cat <<EOF
+Previously imported RPM found. To update use a temporary branch and then
+merge with it:
+	git checkout -b tmp
+	$0 $@
+	git checkout oldbranch
+	git merge tmp --ff-only
+EOF
 		exit 1
 	fi
-	set -e
+}
+
+init() {
+	. $(dirname $0)/common.sh
+
+	common_init
 }
 
 main() {
+	init
+
 	local specfile=$1
 	local sourcedir=$2
-
-	init
 
 	if test -z "$sourcedir"; then
 		sourcedir="$(dirname $specfile)"
@@ -217,6 +200,7 @@ main() {
 		fi
 	fi
 
+	check_repo $@
 	import_source_from_spec $specfile $sourcedir
 	import_patches_from_spec $specfile $sourcedir
 }
