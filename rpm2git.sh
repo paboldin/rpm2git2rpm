@@ -6,10 +6,24 @@ set -e
 compare_base_source() {
 	local sourcedir=$1
 	local filename=$2
+	local specfile=$3
 	local tmpdir=$(mktemp --tmpdir -d)
 	local reposrcdir=$tmpdir/repo
 	local specsrcdir=$tmpdir/rpm
-	local specdir=${filename%.tar*}
+	local specdir=""
+
+	rpmspec -P $specfile > ${tmpdir}/specfile
+	specdir="$(awk '
+	/^%setup/ {
+		if(match($0, "-n[[:space:]]*([^[:space:]]+)", a)) {
+			print a[1];
+		}
+	}' ${tmpdir}/specfile)"
+
+	if test -z "$specdir"; then
+		specdir="${filename%.tar*}"
+	fi
+
 	local reposrc=$tmpdir/$specdir.tar
 
 	mkdir $specsrcdir $reposrcdir
@@ -40,7 +54,7 @@ import_source_from_spec() {
 	mkdir -p dist || :
 	while read num filename is_base; do
 		if test -n "$is_base"; then
-			compare_base_source $sourcedir $filename
+			compare_base_source $sourcedir $filename $specfile
 		fi
 	done < $tmpfile
 
@@ -63,6 +77,7 @@ import_patches_from_spec() {
 	local specfile=$1
 	local sourcedir=$2
 	local tmpfile=$(mktemp --tmpdir)
+	local newspecfile=$(mktemp --tmpdir)
 
 	echo "${green}parsing spec file $specfile${white}"
 
@@ -70,9 +85,11 @@ import_patches_from_spec() {
 	BEGIN {
 		PATCH_RE = "^Patch([[:digit:]]+)";
 		PATCH_CMD_RE = "^%patch([[:digit:]]+)";
+		first_patch = first_patch_cmd = 1;
 	}
-	/^#/ {
+	/^#|^$/ {
 		comment = comment $0 "\n";
+		next;
 	}
 	$0 ~ PATCH_RE {
 		match($1, PATCH_RE, a);
@@ -81,14 +98,32 @@ import_patches_from_spec() {
 		filename = $NF;
 		patches[num, "filename"] = filename;
 		patches[num, "desc"] = comment $0;
+		comment = "";
+		if (first_patch) {
+			print "\n\n\n#PATCHLIST\n\n\n"
+			first_patch = 0;
+		}
+		next;
 	}
 	$0 ~ PATCH_CMD_RE {
 		match($1, PATCH_CMD_RE, a);
 		num = a[1];
 		patchnums[num] = comment $0;
-	}
-	!/^#/ {
 		comment = "";
+		if (first_patch_cmd) {
+			print "\n\n\n#BUILDLIST\n\n\n"
+			first_patch_cmd = 0;
+		}
+		next;
+	}
+	!/^#|^$/ {
+		if (comment != "") {
+			ORS = "";
+			print comment;
+			ORS = "\n";
+			comment = "";
+		}
+		print
 	}
 
 	END {
@@ -153,17 +188,23 @@ import_patches_from_spec() {
 			print content > tmpfile;
 			close(tmpfile);
 
-			if (system("git am --ignore-whitespace " tmpfile))
+			if (system("git am --ignore-whitespace " tmpfile " 1>&2"))
 				break;
 		}
 
 		system("rm -f " tmpfile);
 	}
-	' $specfile
+	' $specfile > $newspecfile
 
-	if test -z "$DEBUG"; then
-		rm -f "$tmpfile"
-	fi
+	local distspecfile=dist/$(basename $specfile)
+
+	cp $newspecfile $distspecfile
+	git add $distspecfile
+	git commit $distspecfile -F - <<EOF
+add $distspecfile
+
+===RPMSKIP===
+EOF
 }
 
 check_repo() {

@@ -151,11 +151,16 @@ init() {
 }
 
 main() {
-	init $4
-
 	local base=$1
-	local spec=$2
-	local end=$3
+	local output=$2
+	local spec=$3
+	local end=$4
+
+	init $output
+
+	if test -z "$spec"; then
+		spec=$(echo dist/*.spec);
+	fi
 
 	copy_sources $base $spec
 	extract_patches $base $end
