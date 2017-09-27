@@ -11,7 +11,7 @@ prepare_spec_file() {
 
 	awk --posix '
 	BEGIN {
-		first_patch_cmd = first_cmd = 1;
+		first_patch_cmd = first_patch = 1;
 	}
 	/^#|^$/ {
 		comment = comment $0 "\n";
