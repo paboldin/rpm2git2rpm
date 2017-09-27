@@ -170,12 +170,7 @@ compare_base_source() {
 	echo "${green}comparing source code GIT vs RPM${white}"
 
 	rpmspec -P $specfile > ${tmpdir}/specfile
-	specdir="$(awk '
-	/^%setup/ {
-		if(match($0, "-n[[:space:]]*([^[:space:]]+)", a)) {
-			print a[1];
-		}
-	}' ${tmpdir}/specfile)"
+	specdir="$(sed -ne '/^%setup.*-n/{s/.*-n *//; s/ .*//; p}' ${tmpdir}/specfile)"
 
 	if test -z "$specdir"; then
 		specdir="${filename%.tar*}"
