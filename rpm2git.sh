@@ -27,7 +27,7 @@ prepare_spec_file() {
 		patchdesc[num, "desc"] = comment $0;
 		comment = "";
 		if (first_patch) {
-			print "\n\n\n#PATCHLIST\n\n\n"
+			print "#PATCHLIST"
 			first_patch = 0;
 		}
 		next;
@@ -39,7 +39,7 @@ prepare_spec_file() {
 		patchnums[num] = comment $0;
 		comment = "";
 		if (first_patch_cmd) {
-			print "\n\n\n#BUILDLIST\n\n\n"
+			print "#BUILDLIST"
 			first_patch_cmd = 0;
 		}
 		next;
@@ -108,13 +108,15 @@ create_mbox_file() {
 	FNR == 1 {
 		num++;
 		mail_header = 1;
-		commitmsg = 0;
+		find_subject = commitmsg = 0;
 		if (num)
 			print "";
 	}
 
 	mail_header && /^commit / {
 		sub("commit", "From");
+		find_subject = 1;
+		$0 = $0 " Mon Sep 17 00:00:00 2001";
 	}
 
 	mail_header && /^Author: / {
@@ -126,6 +128,19 @@ create_mbox_file() {
 		commitmsg = 1;
 	}
 
+	commitmsg {
+		sub("^[[:space:]]+", "");
+	}
+
+	find_subject && commitmsg && /^$/ {
+		next;
+	}
+
+	find_subject && commitmsg {
+		print "Subject: " $0;
+		find_subject = 0;
+		next;
+	}
 
 	commitmsg && /^(diff|---)/ {
 		print "";
@@ -233,10 +248,10 @@ add $distspecfile
 EOF
 }
 
-import_patches_from_spec() {
+import_patches() {
 	local newamfile=$1
 
-	echo "${green}importing package patches${white}"
+	echo "${green}importing package patches from $newamfile${white}"
 	git am --ignore-whitespace $newamfile
 }
 
@@ -284,7 +299,7 @@ main() {
 
 	import_source_from_spec $specfile $sourcedir
 	import_spec $specfile $newspecfile
-	import_patches_from_spec $newamfile
+	import_patches $newamfile
 
 	echo "${green}DONE${white}"
 }
