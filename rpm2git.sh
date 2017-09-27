@@ -1,7 +1,147 @@
 #!/bin/sh
 
-set -x
 set -e
+
+prepare_spec_file() {
+	local specfile=$1
+	local newspecfile=$2
+	local rpminfofile=$3
+
+	echo "${green}parsing spec file ${specfile}${white}"
+
+	awk --posix '
+	BEGIN {
+		first_patch_cmd = first_cmd = 1;
+	}
+	/^#|^$/ {
+		comment = comment $0 "\n";
+		next;
+	}
+	/^Patch[[:digit:]]+:/ {
+		num = $1;
+		filename = $NF;
+		sub("Patch", "", num);
+		sub(":", "", num);
+
+		patchdesc[num, "filename"] = filename;
+		patchdesc[num, "desc"] = comment $0;
+		comment = "";
+		if (first_patch) {
+			print "\n\n\n#PATCHLIST\n\n\n"
+			first_patch = 0;
+		}
+		next;
+	}
+	/^%patch[[:digit:]]+/ {
+		num = $1;
+		sub("%patch", "", num);
+
+		patchnums[num] = comment $0;
+		comment = "";
+		if (first_patch_cmd) {
+			print "\n\n\n#BUILDLIST\n\n\n"
+			first_patch_cmd = 0;
+		}
+		next;
+	}
+	!/^#|^$/ {
+		if (comment != "") {
+			ORS = "";
+			print comment;
+			ORS = "\n";
+			comment = "";
+		}
+		print
+	}
+	END {
+		print "======RPMINFO======";
+		for (num in patchnums) {
+			print "===RPMPATCHFILE=== " patchdesc[num, "filename"];
+			print "===RPMDESC==="
+			print patchdesc[num, "desc"];
+			print "===RPMCMD==="
+			print patchnums[num]
+			print "===RPMEND==="
+		}
+		print "======RPMINFOEND======";
+	}
+	' $specfile > $newspecfile
+
+	cp $newspecfile $rpminfofile
+	sed -i '1,/======RPMINFO======/d' $rpminfofile
+	sed -i   '/======RPMINFO======/,$d' $newspecfile
+}
+
+create_mbox_file() {
+	local sourcedir=$1
+	local rpminfofile=$2
+	local newamfile=$3
+
+	local filelist=$(mktemp --tmpdir)
+	awk --posix '/===RPMPATCHFILE===/ { print "'$sourcedir'/" $2 }' $rpminfofile > $filelist
+
+	echo "${green}creating mbox to import${white}"
+
+	awk --posix '
+	BEGIN {
+		rpminfofile = 1;
+		num = -1;
+	}
+
+	rpminfofile && /^===RPMPATCHFILE===/ {
+		num++;
+		next;
+	}
+
+	rpminfofile && /^======RPMINFOEND======$/ {
+		rpminfofile = 0;
+		num = -1;
+		nextfile;
+	}
+
+	rpminfofile {
+		patchinfo[num] = patchinfo[num] $0 "\n";
+		next;
+	}
+
+
+	FNR == 1 {
+		num++;
+		mail_header = 1;
+		commitmsg = 0;
+		if (num)
+			print "";
+	}
+
+	mail_header && /^commit / {
+		sub("commit", "From");
+	}
+
+	mail_header && /^Author: / {
+		sub("Author: ", "From: ");
+	}
+
+	mail_header && /^$/ {
+		mail_header = 0;
+		commitmsg = 1;
+	}
+
+
+	commitmsg && /^(diff|---)/ {
+		print "";
+		ORS="";
+		print patchinfo[num];
+		ORS="\n";
+		commitmsg = 0;
+		if ($1 != "---")
+			print "---"
+	}
+
+	{
+		print
+	}
+	' $rpminfofile $(cat $filelist) > $newamfile
+}
 
 compare_base_source() {
 	local sourcedir=$1
@@ -11,6 +151,8 @@ compare_base_source() {
 	local reposrcdir=$tmpdir/repo
 	local specsrcdir=$tmpdir/rpm
 	local specdir=""
+
+	echo "${green}comparing source code GIT vs RPM${white}"
 
 	rpmspec -P $specfile > ${tmpdir}/specfile
 	specdir="$(awk '
@@ -65,6 +207,7 @@ import_source_from_spec() {
 		fi
 	done < $tmpfile
 
+	echo "${green}adding extra source code${white}"
 
 	git commit -F - <<EOF
 import sources from $(basename $specfile)
@@ -73,131 +216,14 @@ import sources from $(basename $specfile)
 EOF
 }
 
-import_patches_from_spec() {
+import_spec() {
 	local specfile=$1
-	local sourcedir=$2
-	local tmpfile=$(mktemp --tmpdir)
-	local newspecfile=$(mktemp --tmpdir)
-
-	echo "${green}parsing spec file $specfile${white}"
-
-	awk -v tmpfile=$tmpfile -v sourcedir=$sourcedir '
-	BEGIN {
-		PATCH_RE = "^Patch([[:digit:]]+)";
-		PATCH_CMD_RE = "^%patch([[:digit:]]+)";
-		first_patch = first_patch_cmd = 1;
-	}
-	/^#|^$/ {
-		comment = comment $0 "\n";
-		next;
-	}
-	$0 ~ PATCH_RE {
-		match($1, PATCH_RE, a);
-		num = a[1];
-
-		filename = $NF;
-		patches[num, "filename"] = filename;
-		patches[num, "desc"] = comment $0;
-		comment = "";
-		if (first_patch) {
-			print "\n\n\n#PATCHLIST\n\n\n"
-			first_patch = 0;
-		}
-		next;
-	}
-	$0 ~ PATCH_CMD_RE {
-		match($1, PATCH_CMD_RE, a);
-		num = a[1];
-		patchnums[num] = comment $0;
-		comment = "";
-		if (first_patch_cmd) {
-			print "\n\n\n#BUILDLIST\n\n\n"
-			first_patch_cmd = 0;
-		}
-		next;
-	}
-	!/^#|^$/ {
-		if (comment != "") {
-			ORS = "";
-			print comment;
-			ORS = "\n";
-			comment = "";
-		}
-		print
-	}
-
-	END {
-		for (num in patchnums) {
-			filename = patches[num, "filename"];
-			comment = patches[num, "comment"];
-
-			file = sourcedir "/" filename;
-
-			mail_header = mail_header_tmp = "";
-			message = content = "";
-
-			while ((getline tmp < file) > 0) {
-				if (mail_header_tmp == "" && mail_header == "") {
-					if (index(tmp, "From ") == 1) {
-						mail_header_tmp = tmp;
-						continue;
-					}
-					if (index(tmp, "commit ") == 1) {
-						sub("^commit ", "From ", tmp);
-						mail_header_tmp = tmp;
-						continue;
-					}
-				}
-				if (mail_header_tmp != "") {
-					if (tmp != "") {
-						sub("^Author: ", "From: ", tmp);
-						mail_header_tmp = mail_header_tmp "\n" tmp;
-					} else {
-						mail_header = mail_header_tmp "\n";
-						mail_header_tmp = "";
-					}
-					continue;
-				}
-
-				if (message == "" &&
-				    (tmp == "---" || index(tmp, "diff ") == 1)) {
-					message = content;
-					if (tmp != "---")
-						content = "\n" tmp;
-					else
-						content = "";
-					continue;
-				}
-				content = content "\n" tmp;
-			}
-
-			close(file);
-
-			diff = content;
-			patch_info = ("\n"\
-				"===RPMDESC===\n"\
-				patches[num, "desc"] "\n" \
-				"===RPMCMD===\n"\
-				patchnums[num] "\n" \
-				"===RPMEND===\n"\
-				);
-
-			content = mail_header message patch_info "\n\n---" diff;
-		        content = content message;
-
-			print content > tmpfile;
-			close(tmpfile);
-
-			if (system("git am --ignore-whitespace " tmpfile " 1>&2"))
-				break;
-		}
-
-		system("rm -f " tmpfile);
-	}
-	' $specfile > $newspecfile
-
+	local newspecfile=$2
 	local distspecfile=dist/$(basename $specfile)
 
+	mkdir -p dist
+
+	echo "${green}adding spec template${white}"
 	cp $newspecfile $distspecfile
 	git add $distspecfile
 	git commit $distspecfile -F - <<EOF
@@ -207,8 +233,15 @@ add $distspecfile
 EOF
 }
 
+import_patches_from_spec() {
+	local newamfile=$1
+
+	echo "${green}importing package patches${white}"
+	git am --ignore-whitespace $newamfile
+}
+
 check_repo() {
-	if test -n "$(git show -s | grep '==RPMEND==')"; then
+	if test -n "$(git show -s | grep '===RPM')"; then
 		cat <<EOF
 Previously imported RPM found. To update use a temporary branch and then
 merge with it:
@@ -241,9 +274,19 @@ main() {
 		fi
 	fi
 
+	local newspecfile=$(mktemp --tmpdir)
+	local rpminfofile=$(mktemp --tmpdir)
+	local newamfile=$(mktemp --tmpdir)
+
 	check_repo $@
+	prepare_spec_file $specfile $newspecfile $rpminfofile
+	create_mbox_file $sourcedir $rpminfofile $newamfile
+
 	import_source_from_spec $specfile $sourcedir
-	import_patches_from_spec $specfile $sourcedir
+	import_spec $specfile $newspecfile
+	import_patches_from_spec $newamfile
+
+	echo "${green}DONE${white}"
 }
 
 main $@

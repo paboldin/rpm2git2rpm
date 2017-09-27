@@ -21,8 +21,6 @@ list_source_code_files() {
 	local specfile=$1
 	local tmpfile=$(mktemp --tmpdir)
 
-	echo "${green}extracting source code for $specfile${white}" >&2
-
 	rpmspec -P $specfile > $tmpfile
 	awk '
 	BEGIN {
