@@ -1,83 +1,29 @@
 #!/bin/sh
 
-set -x
+#set -x
 set -e
 
 extract_patches() {
 	local base=$1
 	local end=${2-HEAD}
 
+	echo "${green}copying patches${white}"
+
 	git format-patch --output-directory=$outputdir ${base}...${end} > \
 		$outputdir/list
-	awk -v tmpdir=$tmpsrcdir -v specparts=$specparts '
-	{
-		file = $0;
-		newheader = ""
 
-		patchinfoval = "";
-		delete patchinfo;
+	xargs grep -H '^Patch[0-9]\+: ' < $outputdir/list > $outputdir/renaming
 
-		while ((getline tmp < file) > 0) {
-			if (match(tmp, "^===([A-Z]+)===$", a)) {
-				patchinfoval = a[1];
-				if (patchinfoval == "RPMEND")
-					patchinfoval = "";
-				else
-					patchinfo[patchinfoval] = "";
-				continue;
-			}
-			if (patchinfoval != "") {
-				patchinfo[patchinfoval] = \
-					patchinfo[patchinfoval] tmp "\n";
-				continue;
-			}
-			newheader = newheader tmp "\n";
-			if (tmp == "---")
-				break;
-		}
+	xargs sed -n '/^===RPMDESC===$/,/^===RPM/p' < $outputdir/list > $specparts.list
+	xargs sed -n '/^===RPMCMD===$/,/^===RPM/p' < $outputdir/list > $specparts.build
+	xargs sed -i '/^===RPM/,/^===RPMEND===$/d' < $outputdir/list
 
-		if ("RPMSKIP" in patchinfo)
-			next;
+	sed -i '/^===RPM/d' $specparts.list $specparts.build
 
-		patchdesc = patchinfo["RPMDESC"];
-		patchcmd = patchinfo["RPMCMD"];
+	sed -i -e 's/^/mv /; s%:Patch[0-9]\+: % '$tmpsrcdir'%' $outputdir/renaming
+	sh -e $outputdir/renaming
 
-		if (patchdesc == "" || patchcmd == "" ||
-		    !match(patchdesc, ".*Patch[[:digit:]]+: ([^[:space:]]+)", a)) {
-			ORS = "\n";
-			print "Cannot parse RPM spec info for " file > "/dev/stderr";
-			print "Please refer to README.md" > "/dev/stderr";
-			exit 1
-		}
-
-		newfile = tmpdir "/" a[1];
-
-		save_rs = RS
-		RS = "^$"
-
-		getline tmp < file
-		print newheader > newfile;
-		print tmp > newfile;
-
-		print newfile;
-
-		RS = save_rs
-		close(file)
-		close(newfile);
-
-		ORS = "";
-		print patchdesc > specparts ".list";
-		print patchcmd > specparts ".build";
-		ORS = "\n";
-	}
-
-	END {
-		close(specparts ".list")
-		close(specparts ".build")
-	}
-	' $outputdir/list
-	xargs rm < $outputdir/list
-	rm -f $outputdir/list
+	rm -f $outputdir/*.patch $outputdir/list
 }
 
 copy_sources() {
@@ -85,11 +31,13 @@ copy_sources() {
 	local spec=$2
 	local tmpfile=$(mktemp --tmpdir)
 
+	echo "${green}copying sources${white}"
+
 	list_source_code_files $spec > $tmpfile
 
 	local currentbranch=$(git rev-parse --abbrev-ref HEAD)
 	if test -z "$currentbranch"; then
-		echo "Cannot find current branch" >&2
+		echo "${red}Cannot find current branch${white}" >&2
 		exit 1
 	fi
 
@@ -108,7 +56,7 @@ copy_sources() {
 	set -e
 
 	if test $rv -ne 0; then
-		echo "git archive-all failed with $rv" >&2
+		echo "${red}git archive-all failed with $rv${white}" >&2
 		exit $rv;
 	fi
 
@@ -122,6 +70,7 @@ copy_sources() {
 interpolate_spec() {
 	local spec=$1
 
+	echo "${green}preparing spec${white}"
 	cp "$spec" "$tmpspecdir"
 
 	spec="$outputdir/SPECS/$(basename $spec)"
@@ -129,8 +78,10 @@ interpolate_spec() {
 			     d }
 		/#BUILDLIST/{ r '$specparts'.build
 			     d }' $spec
-	echo $spec
-
+	echo "RPM spec is in $spec"
+	echo "Use:"
+	echo "rpmbuild -bs --define '_topdir $outputdir' $spec"
+	echo "To build SRPM"
 }
 
 init() {
