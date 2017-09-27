@@ -22,28 +22,16 @@ list_source_code_files() {
 	local tmpfile=$(mktemp --tmpdir)
 
 	rpmspec -P $specfile > $tmpfile
-	awk '
-	BEGIN {
-		SOURCE_RE = "^Source([[:digit:]]+)";
-	}
-	$0 ~ SOURCE_RE {
-		match($1, SOURCE_RE, a);
-		num = a[1];
-		filename = $NF;
-		sources[num] = filename;
-	}
+	awk --posix '
+	/^Source[[:digit:]]+:/ {
+		num = $1;
+		sub("Source", "", num);
+		sub(":", "", num);
 
-	END {
-		url = -1;
-		for (num in sources) {
-			filename = sources[num];
-			if (index(filename, "/") != 0) {
-				split(filename, a, "/");
-				filename = a[length(a)];
-				url = num;
-			}
-			print num, filename, url == num ? "BASE" : "";
-		}
+		filename = url = $NF;
+		sub(".*/", "", filename);
+
+		print num, filename, filename != url ? "BASE" : "";
 	}
 	' $tmpfile
 
