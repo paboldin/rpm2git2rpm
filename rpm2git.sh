@@ -108,14 +108,14 @@ create_mbox_file() {
 	FNR == 1 {
 		num++;
 		mail_header = 1;
-		find_subject = commitmsg = 0;
+		fix_space = find_subject = commitmsg = 0;
 		if (num)
 			print "";
 	}
 
 	mail_header && /^commit / {
 		sub("commit", "From");
-		find_subject = 1;
+		fix_space = find_subject = 1;
 		$0 = $0 " Mon Sep 17 00:00:00 2001";
 	}
 
@@ -128,15 +128,15 @@ create_mbox_file() {
 		commitmsg = 1;
 	}
 
-	commitmsg {
+	commitmsg && fix_space {
 		sub("^[[:space:]]+", "");
 	}
 
-	find_subject && commitmsg && /^$/ {
+	commitmsg && find_subject && /^$/ {
 		next;
 	}
 
-	find_subject && commitmsg {
+	commitmsg && find_subject {
 		print "Subject: " $0;
 		find_subject = 0;
 		next;
