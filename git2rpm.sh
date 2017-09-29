@@ -9,7 +9,9 @@ extract_patches() {
 
 	echo "${green}copying patches${white}"
 
-	git format-patch --output-directory=$outputdir ${base}...${end} > \
+	git format-patch --output-directory=$outputdir \
+		--no-numbered \
+		${base}...${end} > \
 		$outputdir/list
 
 	xargs grep -H '^Patch[0-9]\+: ' < $outputdir/list > $outputdir/renaming
