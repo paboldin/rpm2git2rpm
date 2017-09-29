@@ -25,7 +25,7 @@ extract_patches() {
 	sed -i -e 's/^/mv /; s%:Patch[0-9]\+: % '$tmpsrcdir'%' $outputdir/renaming
 	sh -e $outputdir/renaming
 
-	rm -f $outputdir/*.patch $outputdir/list
+	rm -f $outputdir/*.patch $outputdir/list $outputdir/renaming
 }
 
 copy_sources() {
@@ -80,6 +80,7 @@ interpolate_spec() {
 			     d }
 		/#BUILDLIST/{ r '$specparts'.build
 			     d }' $spec
+	rm -f ${specparts}.list ${specparts}.build
 	echo "RPM spec is in $spec"
 	echo "Use:"
 	echo "rpmbuild -bs --define '_topdir $outputdir' $spec"
