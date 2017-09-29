@@ -18,7 +18,7 @@ extract_patches() {
 	xargs sed -n '/^===RPMCMD===$/,/^===RPM/p' < $outputdir/list > $specparts.build
 	xargs sed -i '/^===RPM/,/^===RPMEND===$/d' < $outputdir/list
 
-	sed -i '/^===RPM/d' $specparts.list $specparts.build
+	sed -i -e '/^===RPM/d' -e 's/^ #/#/' $specparts.list $specparts.build
 
 	sed -i -e 's/^/mv /; s%:Patch[0-9]\+: % '$tmpsrcdir'%' $outputdir/renaming
 	sh -e $outputdir/renaming

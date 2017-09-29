@@ -24,7 +24,12 @@ prepare_spec_file() {
 		sub(":", "", num);
 
 		patchdesc[num, "filename"] = filename;
-		patchdesc[num, "desc"] = comment $0;
+		desc = comment $0;
+
+		gsub("^#", " #", desc);
+		gsub("\n#", "\n #", desc);
+
+		patchdesc[num, "desc"] = desc;
 		comment = "";
 		if (first_patch) {
 			print "#PATCHLIST"
