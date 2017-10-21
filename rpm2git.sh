@@ -20,7 +20,7 @@ prepare_spec_file() {
 	/^Patch[[:digit:]]+:/ {
 		num = $1;
 		filename = $NF;
-		sub("Patch", "", num);
+		sub("Patch0*", "", num);
 		sub(":", "", num);
 
 		patchdesc[num, "filename"] = filename;
@@ -39,7 +39,7 @@ prepare_spec_file() {
 	}
 	/^%patch[[:digit:]]+/ {
 		num = $1;
-		sub("%patch", "", num);
+		sub("%patch0*", "", num);
 
 		patchnums[num] = comment $0;
 		comment = "";
@@ -189,7 +189,7 @@ compare_base_source() {
 	git archive-all --force-submodules --prefix=$specdir/ $reposrc
 	tar xf $reposrc -C $reposrcdir
 
-	if ! diff -x '*.git' -NurpP $specsrcdir $reposrcdir >/dev/null 2>&1;
+	if ! diff -x '*.git' -NurpP $specsrcdir $reposrcdir -x '.*' >/dev/null 2>&1;
 	then
 		echo "${red}GIT source in $reposrcdir and RPM source in $specsrcdir differ${white}"
 		rm -rf $tmpdir
