@@ -9,7 +9,7 @@ prepare_spec_file() {
 
 	echo "${green}parsing spec file ${specfile}${white}"
 
-	awk --posix '
+	awk '
 	BEGIN {
 		first_patch_cmd = first_patch = 1;
 	}
@@ -83,11 +83,11 @@ create_mbox_file() {
 	local newamfile=$3
 
 	local filelist=$(mktemp --tmpdir)
-	awk --posix '/===RPMPATCHFILE===/ { print "'$sourcedir'/" $2 }' $rpminfofile > $filelist
+	awk '/===RPMPATCHFILE===/ { print "'$sourcedir'/" $2 }' $rpminfofile > $filelist
 
 	echo "${green}creating mbox to import${white}"
 
-	awk --posix '
+	awk '
 	BEGIN {
 		rpminfofile = 1;
 		num = -1;
