@@ -126,6 +126,11 @@ main() {
 	local spec=$3
 	local end=$4
 
+	if test $# -lt 2; then
+		usage
+		exit
+	fi
+
 	init $output
 
 	if test -z "$spec"; then
