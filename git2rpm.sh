@@ -104,6 +104,22 @@ init() {
 	mkdir -p $tmpsrcdir $tmpspecdir
 }
 
+usage() {
+	local scriptname=$(basename $0)
+	echo "\
+$scriptname -- export git repo into rpmbuild'able dir
+
+Usage: $scriptname BASEREF OUTPUTDIR [SPECTEMPLATE] [LASTREF]
+	BASEREF -- export starts from this base ref,
+	OUTPUTDIR -- directory with rpmbuild'able output, will be created
+		     if not existing,
+	[SPECTEMPLATE] -- template with spec file; fefault is dist/*.spec,
+	[LASTREF] -- export patches until this ref.
+
+See README.md for details."
+}
+
+
 main() {
 	local base=$1
 	local output=$2

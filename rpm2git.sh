@@ -275,8 +275,26 @@ init() {
 	common_init
 }
 
+usage() {
+	local scriptname=$(basename $0)
+	echo "\
+$scriptname -- import RPM spec into git local repo
+
+Usage: $scriptname SPECFILE [SOURCEDIR]
+	SPECFILE -- path to the RPM's .spec file to import into local repo
+	[SOURCEDIR] -- optional path to the SOURCES directory of RPM sources.
+		       Default is the directory of SPEC file.
+
+See README.md for details."
+}
+
 main() {
 	init
+
+	if test $# -eq 0; then
+		usage
+		exit
+	fi
 
 	local specfile=$1
 	local sourcedir=$2
@@ -287,6 +305,11 @@ main() {
 		if test "${sourcedir}" != "${sourcedir%/SPECS}"; then
 			sourcedir="${sourcedir%/SPECS}/SOURCES"
 		fi
+	fi
+
+	if ! test -f "$specfile" || ! test -d "$sourcedir"; then
+		usage
+		exit 1
 	fi
 
 	local newspecfile=$(mktemp --tmpdir)
