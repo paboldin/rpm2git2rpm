@@ -59,8 +59,15 @@ prepare_spec_file() {
 		print
 	}
 	END {
+		size = 0;
+		for (i in patchnums) size++;
 		print "======RPMINFO======";
-		for (num in patchnums) {
+		for (num=1; num<=size; num++) {
+                        if (length(patchnums[num]) == 0) {  # for absent patchnumbers
+                                size++;
+                                continue;
+                        }
+
 			print "===RPMPATCHFILE=== " patchdesc[num, "filename"];
 			print "===RPMDESC==="
 			print patchdesc[num, "desc"];
