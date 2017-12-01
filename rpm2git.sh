@@ -12,6 +12,7 @@ prepare_spec_file() {
 	awk '
 	BEGIN {
 		first_patch_cmd = first_patch = 1;
+		norder = 1;
 	}
 	/^#|^$/ {
 		comment = comment $0 "\n";
@@ -41,6 +42,8 @@ prepare_spec_file() {
 		num = $1;
 		sub("%patch0*", "", num);
 
+		order[norder] = num;
+		norder++;
 		patchnums[num] = comment $0;
 		comment = "";
 		if (first_patch_cmd) {
@@ -60,7 +63,9 @@ prepare_spec_file() {
 	}
 	END {
 		print "======RPMINFO======";
-		for (num in patchnums) {
+		for (i = 1; i < norder; i++) {
+			num = order[i];
+
 			print "===RPMPATCHFILE=== " patchdesc[num, "filename"];
 			print "===RPMDESC==="
 			print patchdesc[num, "desc"];
