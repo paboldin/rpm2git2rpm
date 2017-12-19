@@ -14,16 +14,36 @@ extract_patches() {
 		${base}...${end} > \
 		$outputdir/list
 
-	xargs grep -H '^Patch[0-9]\+: ' < $outputdir/list > $outputdir/renaming
-	sed -i -e 's/^/mv /; s%:Patch[0-9]\+: % '$tmpsrcdir'%' $outputdir/renaming
-	sh -e $outputdir/renaming
-
-	awk '
+	xargs grep -H '^Patch[0-9]\+: ' < $outputdir/list > $outputdir/patches
+	awk -v tmpsrcdir=$tmpsrcdir '
+	BEGIN {
+		npatch = 0;
+	}
 	{
-		if (seen[$NF]) { next; }
-		seen[$NF] = 1;
-		print $NF;
-	}' $outputdir/renaming > $outputdir/list
+		patchnum = $1;
+		gsub(".*Patch", "", patchnum);
+		gsub(":.*", "", patchnum);
+
+		gitname = $1;
+		gsub(":Patch.*", "", gitname);
+
+		if (patchfiles[patchnum, "git"] == "")
+			patchnums[npatch++] = patchnum;
+
+		patchfiles[patchnum, "git"] = gitname;
+		patchfiles[patchnum, "rpm"] = $2;
+	}
+	END {
+		for (i = 0; i < npatch; i++) {
+			patchnum = patchnums[i];
+			gitname = patchfiles[patchnum, "git"];
+			rpmname = patchfiles[patchnum, "rpm"];
+			print "mv " gitname " " tmpsrcdir rpmname;
+		}
+	}' $outputdir/patches > $outputdir/renaming
+	sh -xe $outputdir/renaming
+
+	awk '{ print $NF; }' $outputdir/renaming > $outputdir/list
 
 	xargs sed -n '/^===RPMDESC===$/,/^===RPM/p' < $outputdir/list > $specparts.list
 	xargs sed -n '/^===RPMCMD===$/,/^===RPM/p' < $outputdir/list > $specparts.build
